@@ -88,7 +88,7 @@ void hos_first_person_player(uint64_t actor, const float position[3]) {
     ReleaseSRWLockExclusive(&fp_lock);
 }
 
-/* the menu's row (option 57) or HOS_FIRST_PERSON, as the mouse camera's own switch */
+/* the menu's row (option 60) or HOS_FIRST_PERSON, as the mouse camera's own switch */
 static int fp_on(void) {
     static const char *env;
     static int looked;
