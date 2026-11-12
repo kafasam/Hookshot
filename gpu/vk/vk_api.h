@@ -48,13 +48,13 @@ enum { HOS_OPT_HDR_TONEMAP = 47 };
 /* 49 and 50 are reserved for Walk mode and Walk speed (#2345). */
 enum { HOS_OPT_FOV = 51 };
 /* (HOS_OPT_FIRST_PERSON, 54: Controls' view at Link's eyes, host/hos_first_person.c: 0 the game's camera, 1 his eyes;
-   the Debug tab's free camera wins over it; 54: the first free id, main having since taken 47 for its HDR tonemap row) */
-enum { HOS_OPT_FIRST_PERSON = 54 };
-/* (HOS_OPT_FP_HEIGHT, HOS_OPT_FP_OFFSET, 52 and 53: Controls' First person height and First person offset, the eye's
+   the Debug tab's free camera wins over it; 57 to 59: past 52 to 56, which the open sprint, view-distance and keyboard PRs (#2604, #2669, #2530) claim) */
+enum { HOS_OPT_FIRST_PERSON = 57 };
+/* (HOS_OPT_FP_HEIGHT, HOS_OPT_FP_OFFSET, 58 and 59: Controls' First person height and First person offset, the eye's
    height over Link's origin (50 to 250) and its offset along the view (0 to 100), in hundredths of a metre, read at
    every view by host/hos_first_person.c - live, as camera speed's row is; HOS_FP_UP and HOS_FP_FORWARD still win for
-   a run. 52 and 53: main has FOV's 51 and reserves 49 and 50 for Walk mode and Walk speed (#2345)) */
-enum { HOS_OPT_FP_HEIGHT = 52, HOS_OPT_FP_OFFSET };
+   a run. 58 and 59: after first person's 57, past the same contested 52 to 56) */
+enum { HOS_OPT_FP_HEIGHT = 58, HOS_OPT_FP_OFFSET = 59 };
 
 /* (hookshot) the controls' names (host/nn_hid.c, host/pad_sdl.c, the pad_ and key_ lines of hookshot_options.ini):
    the Switch's buttons in nn::hid's bit order, and a gamepad's inputs by position (the bottom face button first:
@@ -238,7 +238,7 @@ typedef struct MkwVkRenderer {
                                 18 to 23: the Motion page (HOS_OPT_GYRO*: motion controls from a pad's gyroscope, host/pad_sdl.c;
                                 the horizontal and vertical sensitivity in percent, each turned around, the deadzone),
                                 27: the volume in percent, 28: no sound while another window has the focus (host/nn_audio.c),
-                                54: the view at Link's eyes (HOS_OPT_FIRST_PERSON), 52 its height over his origin and 53 its
+                                57: the view at Link's eyes (HOS_OPT_FIRST_PERSON), 58 its height over his origin and 59 its
                                 offset along the view, in hundredths of a metre (host/hos_first_person.c),
                                 48: the camera's turn speed in percent of the game's (host/nn_vi.c) */
     /* a submit with its queue */
