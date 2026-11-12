@@ -476,7 +476,11 @@ HDR, Detail, and GPU and memory (last: the rows to change when something is wron
   Link's origin (1.50 m is about adult Link's eyes, 1.00 m a child's) and **First person offset** moves it along the
   view (0.15 m, past the face); both apply at once while he walks, for trying variations in game. `HOS_FIRST_PERSON=1`
   turns it on for one run; `HOS_FP_UP` and `HOS_FP_FORWARD` (in metres) move the eye for one run over the rows. Disable
-  camera centering keeps the view where you turn it.
+  camera centering keeps the view where you turn it. While the first person view draws, the draws of the programs named
+  by `HOS_FP_HEAD_HIDE_KEYS` (hex key prefixes, comma separated) are left out — Link's head, which the eye sits inside;
+  the hide is off whenever first person is, and off for the aim, cutscenes and the third person with it. The keys come
+  from a calibration run with `HOS_FP_HEAD_DEBUG=1`, which logs each program's draws with their distance to the eye
+  (the candidates are within a metre; each can be tried live with `RX_VK_SKIP_FILE` before it is baked in).
 - **Stick dead zone:** how far a stick moves before it counts, on each axis. Default is XInput's (about 24%); lower suits
   a precise stick, higher one that drifts. The game keeps a dead zone of its own after it.
 - **Rumble strength** scales the controller's rumble: 100% is the game's own, Off turns it off. The game's HD rumble

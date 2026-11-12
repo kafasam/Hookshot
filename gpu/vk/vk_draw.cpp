@@ -6426,6 +6426,92 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
     if (cp->key == 0x1a7482c0ec9991eaULL) world_drawn_at.store(presents_now, std::memory_order_relaxed);
     if (cp->key == 0x02ff9920c2571cc2ULL) wheel_drawn_at.store(presents_now, std::memory_order_relaxed);
     if (skip_live(cp->key)) return;   // (EvilOOT, RX_VK_SKIP_FILE)
+    // (hookshot, the first person view's head hide) While the host's first person owns the frame's view (fp_head, the
+    // api table's: the eye it placed the view at, and that it is ours this frame — its aim, event and parked-camera
+    // gates stand it down on its side, host/hos_first_person.c), the draws of the programs whose keys start with one of
+    // HOS_FP_HEAD_HIDE_KEYS' hex prefixes are left out: the head is geometry the eye sits inside, and this build's own
+    // material-hide lists are load-time pack data with no runtime writer any of the reports found, so the draw is where
+    // to take it. The view is written as the game records its frame and replayed a frame later, so at a toggle of the
+    // row the hide can be a frame behind it — the same skew and pop the view itself takes, followed here. Nothing is
+    // hidden while first person is off: the host's answer is 0 then, whatever the list says
+    {
+        static std::atomic<int64_t> fp_frame{-1};
+        static std::atomic<uint64_t> fp_serial{0}, fp_eye_bits[3]{};
+        const int64_t frame = (int64_t)texture_frame_no();
+        if (fp_frame.load(std::memory_order_relaxed) != frame) {
+            // (asked once a frame, whatever draws come: the world_drawn_at pattern above. More than one replay worker
+            // can pass this test together; the host's answer is one within the frame, and fp_frame stored last makes a
+            // reader of the same frame see one frame's answer whole)
+            double eye[3] = {};
+            const uint64_t serial = (uint64_t)(host && host->fp_head ? host->fp_head(eye) : 0);
+            uint64_t bits[3];
+            std::memcpy(bits, eye, sizeof bits);
+            for (int i = 0; i < 3; i++) fp_eye_bits[i].store(bits[i], std::memory_order_relaxed);
+            fp_serial.store(serial, std::memory_order_relaxed);
+            fp_frame.store(frame, std::memory_order_relaxed);
+        }
+        if (fp_serial.load(std::memory_order_relaxed)) {
+            // (the calibrated defaults, hex prefixes: the keys the HOS_FP_HEAD_DEBUG playtest below names at Link's
+            // head, baked in as they are confirmed — none yet, so the env list is the whole list until that runs)
+            static const char* const calibrated = "";
+            static const std::vector<skip_prefix::Entry> hide_keys = [] {
+                const char* env = getenv("HOS_FP_HEAD_HIDE_KEYS");
+                return skip_prefix::parse(env && *env ? env : calibrated);
+            }();
+            if (skip_prefix::matches(cp->key, hide_keys)) return;
+            static const bool debug = env_on("HOS_FP_HEAD_DEBUG");
+            if (debug) {
+                // (the calibration for the list above: one line per program key while the view is ours — what the draws
+                // near the eye are. The distance is read out of the vertex stage's uniform buffer 0, the same payload
+                // the temporal upscalers take the scene camera from (above): a model matrix's translation sits at no
+                // offset this build pins down, so every aligned 4x4 block's translation row and column are read as a
+                // world position and the nearest finite one to the eye reported — the head's constants sit within a
+                // metre of it. A key drawn as one mesh task (d.mesh) is the risk this line is here to see: it may be
+                // the whole player, and the near plane is the fallback then, not a bigger list)
+                static std::mutex mu;
+                static std::unordered_map<uint64_t, bool> told;   // (the keys already said, this run)
+                bool first = false;
+                {
+                    std::lock_guard lk(mu);
+                    if (told.size() < 400) first = told.emplace(cp->key, true).second;
+                }
+                if (first) {
+                    uint64_t bits[3];
+                    for (int i = 0; i < 3; i++) bits[i] = fp_eye_bits[i].load(std::memory_order_relaxed);
+                    double eye[3];
+                    std::memcpy(eye, bits, sizeof eye);
+                    char what[48];
+                    if (d.mesh)
+                        std::snprintf(what, sizeof what, "mesh groups %dx%dx%d", d.groups[0], d.groups[1], d.groups[2]);
+                    else
+                        std::snprintf(what, sizeof what, "draw count %d, %d instance%s", d.count, d.instances,
+                                      d.instances == 1 ? "" : "s");
+                    double best = -1.0;   // (the nearest, metres; negative: nothing readable in the constants)
+                    const nvn_p_bind_buf& ub = s.ubo[0][0];
+                    if (ub.addr && ub.size) {
+                        const uint64_t n = std::min<uint64_t>(ub.size, 0x800) & ~15ull;
+                        float c[512];
+                        if (n && ub_read(ub.addr, c, n)) {
+                            for (uint64_t o = 0; o + 64 <= n; o += 16) {
+                                for (int t = 0; t < 2; t++) {   // (a translation row, then a translation column)
+                                    const float x = c[(o >> 2) + (t ? 3 : 12)], y = c[(o >> 2) + (t ? 7 : 13)],
+                                                z = c[(o >> 2) + (t ? 11 : 14)];
+                                    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) continue;
+                                    const double dx = x - eye[0], dy = y - eye[1], dz = z - eye[2];
+                                    const double d2 = dx * dx + dy * dy + dz * dz;
+                                    if (best < 0.0 || d2 < best * best) best = std::sqrt(d2);
+                                }
+                            }
+                        }
+                    }
+                    logf("vk: fp head: program %016llx %s, target %ux%u: %s%.2f m from the eye (%.2f, %.2f, %.2f)%s",
+                         (unsigned long long)cp->key, what, at.width, at.height, best < 0.0 ? "no constants read; " : "",
+                         best < 0.0 ? 0.0 : best, eye[0], eye[1], eye[2],
+                         best >= 0.0 && best <= 1.0 ? "; a candidate" : "");
+                }
+            }
+        }
+    }
     {   // (hookshot, RX_VK_SKIP_PROG=<key prefix,...>: draws too, their native code keys logged once; =-: none)
         // (OoT's 53509044401d78d2, by default only while its targets have no view: 128 draws, once while an area loads, that render
         // the slices of two 64^3 BC4 noise volumes through raw RGBA16UI views. Those views were not made (no attachment usage) and
