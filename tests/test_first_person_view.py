@@ -77,6 +77,7 @@ int rx_option(int id, int otherwise) {
 void hos_first_person_camera(uint64_t cam);
 void hos_first_person_player(uint64_t actor, const float position[3]);
 void hos_first_person(Ctx *c, uint64_t view);
+int hos_first_person_head(double eye[3]);   /* (what the renderer's head hide reads: MkwVkHost fp_head) */
 
 static int camera_state = 4;   /* the player camera's state, at +0x204 */
 static float link_pos[3] = {1, 2, 3};
@@ -121,6 +122,16 @@ int main(void) {
     /* the line corrected is yaw 0 pitch 0: back (0,0,1), the head (1, 2+up, 3-offset) */
     CHECK(close_to(mf(VIEW, 0), 1) && close_to(mf(VIEW, 1), 0) && close_to(mf(VIEW, 2), 0) && close_to(mf(VIEW, 3), -1));
     CHECK(close_to(mf(VIEW, 7), -(2 + 1.5)) && close_to(mf(VIEW, 11), -(3 - 0.15)));
+    /* the head hide's answer: a serial (>0) while the view is ours, and the eye it was placed at — the head the rows
+       built (1, 2+1.5, 3), the offset taking it back along the level view's back vector (0,0,1) to z 3-0.15 */
+    {
+        double eye[3] = {123, 123, 123};
+        const int serial = hos_first_person_head(eye);
+        CHECK(serial > 0);
+        CHECK(close_to(eye[0], 1) && close_to(eye[1], 2 + 1.5) && close_to(eye[2], 3 - 0.15));
+        game_view(VIEW), frame(VIEW, 0);
+        CHECK(hos_first_person_head(eye) == serial + 1);   /* (each written view: the next serial) */
+    }
     menu_height = 200;   /* the rows are live: the next frame takes the new height */
     game_view(VIEW), frame(VIEW, 0);
     CHECK(mine(VIEW) && close_to(mf(VIEW, 7), -(2 + 2.0)));
@@ -147,6 +158,10 @@ int main(void) {
     state(0);
     game_view(VIEW), game_view(AIM_VIEW), frame(VIEW, 1);
     CHECK(!mine(VIEW) && !mine(AIM_VIEW));   /* the aim's view and camera zero's both untouched */
+    {   /* and the head hide's answer with it: 0, the head stays the game's to draw */
+        double eye[3];
+        CHECK(hos_first_person_head(eye) == 0);
+    }
 
     /* the aim lets go straight to a recenter (state 2, no walking between): no flash of the view from before it. The
        aim's last pass is older than the hold now, so what stands down is the park's end of the held view */
@@ -174,10 +189,17 @@ int main(void) {
     state(4), menu_free_camera = 1;
     game_view(VIEW), frame(VIEW, 0);
     CHECK(!mine(VIEW));
+    {   double eye[3]; CHECK(hos_first_person_head(eye) == 0); }   /* (the hide stood down with the view) */
     menu_free_camera = 0, menu_fp = 0;
     game_view(VIEW), frame(VIEW, 0);
     CHECK(!mine(VIEW));
+    {   double eye[3]; CHECK(hos_first_person_head(eye) == 0); }   /* (the row off: unhidden within the frame) */
     menu_fp = 1;
+    game_view(VIEW), frame(VIEW, 0);   /* (back on: the serial is again a positive one, the eye with it) */
+    {
+        double eye[3] = {123, 123, 123};
+        CHECK(hos_first_person_head(eye) > 0 && close_to(eye[1], 2 + 1.5));
+    }
 
     if (!fails) printf("PASS\n");
     return fails != 0;

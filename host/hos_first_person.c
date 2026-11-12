@@ -38,7 +38,12 @@
    and the eye is not checked against walls (the game
    still collides its third-person one). The head is the actor's origin (+796, host/hos_main.c) plus so many metres up
    and so many along the view: the menu's First person height (0.5 to 2.5, 1.5: adult Link's eyes; a child's are nearer
-   1) and First person offset (0 to 1, 0.15: past the face), live; HOS_FP_UP and HOS_FP_FORWARD win for a run. */
+   1) and First person offset (0 to 1, 0.15: past the face), live; HOS_FP_UP and HOS_FP_FORWARD win for a run.
+
+   The view once written is told to the renderer (hos_first_person_head below, MkwVkHost's fp_head): the eye it was
+   placed at, and that this frame's view is ours — the frame's aim, event and parked-camera gates above all stand it
+   down on this side. The renderer's head hide reads exactly that (HOS_FP_HEAD_HIDE_KEYS, gpu/vk/vk_draw.cpp) and hides
+   Link's head only while the first person view draws; the game's third person, its aim and its cutscenes keep it. */
 #include "hos.h"
 #include "../gpu/vk/vk_api.h"
 #include <math.h>
@@ -77,6 +82,12 @@ static int64_t player_at;
 static float player_pos[3];
 static double held_yaw, held_pitch;
 static int64_t held_at;
+/* the renderer's head hide (gpu/vk/vk_draw.cpp, asked through MkwVkHost's fp_head): the eye of the last view this file
+   wrote, and that it wrote one, in the serial of the write. Cleared at every call's start below and set again only once
+   every gate has passed, so the hide is on exactly the frames the view is ours — the aim, an event, a parked state and
+   the row off all return before the set, and the game runs a view through this hook every frame it renders */
+static volatile LONG64 fp_head_serial;
+static volatile LONG64 fp_head_eye[3];   /* (the eye, as its double bits: there is no atomic of a double) */
 
 /* Link's own update (f_82c415e0's hook, host/hos_main.c oot_update_player_cheats) hands his actor and position here each
    frame, on the game's thread, already validated as his (hos_oot_lift_player's checks) */
@@ -159,6 +170,10 @@ static int event_playing(Ctx *c) {
 void hos_first_person(Ctx *c, uint64_t view) {
     static uint64_t held_actor;
     static long long applied;
+    /* the head hide's answer for this frame starts off: set again only where the view is written below, so whichever
+       gate returns first leaves the head to the game's camera, and the hide follows the view within a frame of the
+       row's toggle (the renderer replays a frame behind the write anyway, and takes that skew with it) */
+    InterlockedExchange64(&fp_head_serial, 0);
     if (!view || recomp_load64(c, view) != VT_VIEW) return;
     /* camera zero supplies the gameplay view; the same matrix routine also serves other cameras (the free camera's
        check). One of those is the aim (the slingshot's, the bow's own first person camera): its view is not this one,
@@ -266,11 +281,37 @@ void hos_first_person(Ctx *c, uint64_t view) {
             recomp_store32(c, view + 8 + (row * 4 + col) * 4, bits);
         }
     }
-    if ((++applied & 4095) == 1)
+    /* the head hide's answer: on, at this eye, with this write's serial (the eye bits first and the serial last, so a
+       reader that sees a serial sees an eye of the same write — a frame straddled mid-read is one frame's skew, taken) */
+    applied++;
+    {
+        uint64_t bits[3];
+        memcpy(bits, head, sizeof bits);
+        for (int i = 0; i < 3; i++) InterlockedExchange64(&fp_head_eye[i], (LONG64)bits[i]);
+        InterlockedExchange64(&fp_head_serial, (LONG64)applied);
+    }
+    if ((applied & 4095) == 1)
         hos_log("first person: %lld views at Link's head; yaw %.2f pitch %.2f", applied, yaw, pitch);
+}
+
+/* (MkwVkHost's fp_head, host/rx_backend.c's table) the head hide's answer above, for the renderer: the serial of the
+   last view written (>0) and the eye it was placed at, in eye, while the first person view owns the frame's view; 0
+   when the game's own camera draws it — the aim, an event, a parked state, the row off — and eye left alone */
+int hos_first_person_head(double eye[3]) {
+    const LONG64 serial = InterlockedCompareExchange64(&fp_head_serial, 0, 0);
+    if (serial <= 0) return 0;
+    uint64_t bits[3];
+    for (int i = 0; i < 3; i++) bits[i] = (uint64_t)InterlockedCompareExchange64(&fp_head_eye[i], 0, 0);
+    memcpy(eye, bits, sizeof bits);
+    return (int)serial;
+}
 #else
 void hos_first_person(Ctx *c, uint64_t view) {
     (void)c;
     (void)view;
-#endif
 }
+int hos_first_person_head(double eye[3]) {
+    (void)eye;
+    return 0;
+}
+#endif

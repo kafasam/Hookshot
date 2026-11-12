@@ -15,7 +15,7 @@
 extern "C" {
 #endif
 
-#define MKWVK_API_VERSION 18
+#define MKWVK_API_VERSION 19
 enum { HOS_OPT_CHEAT_HEARTS = 32, HOS_OPT_CHEAT_FLIGHT, HOS_OPT_CHEAT_ACTION, HOS_OPT_CHEAT_CAMERA, HOS_OPT_CHEAT_SPEED };
 /* (hookshot) the Gameplay tab's Text size (host/oot_text_size.c): 0 the game's, 1 110%, 2 125%, 3 150%, 4 175% */
 enum { HOS_OPT_TEXT_SIZE = 10 };
@@ -191,6 +191,11 @@ typedef struct MkwVkHost {
     /* (version 17, hookshot) what of the button prompts a change of face or controls reaches at once (host/prompts.c):
        HOS_PROMPTS_LIVE_* bits; 0 none (a mod's files, built without the prompts, or not loaded yet) */
     int (*prompts_live)(void);
+    /* (version 19, hookshot) the first person view's state for the renderer's head hide (host/hos_first_person.c,
+       gpu/vk/vk_draw.cpp): the serial of the last view it wrote (>0) while it owns the frame's view, with the eye it
+       was placed at in eye[3]; 0 when the game's own camera draws the frame — the aim, an event, a parked state, the
+       row off — and eye left alone. The head is hidden exactly those frames the serial is positive */
+    int (*fp_head)(double eye[3]);
 } MkwVkHost;
 
 /* One completed temporal-upscale sample; all zero while inactive. */
