@@ -62,6 +62,12 @@ VIEW_HEAD = "void f_804e48c0(Ctx *__restrict A64_NOESC c) {\n"
 # (the head of the view's loop: a bare label, since nx2/poll.py puts the interrupt poll before each backward goto; with the
 # poll after the label in C lifted before that)
 VIEW_ANCHORS = ("L_804e5068:;\n", "L_804e5068:; A64_POLL(c);\n")
+VIEW_HOOK = "    hos_oot_free_view(c, c->x[20]);\n"
+# (first person, host/hos_first_person.c: the view rebuilt at Link's head along the game's own line, right after the free
+# camera's hook, which owns the view while it is on)
+VIEW_FP_HOOK = "    hos_first_person(c, c->x[20]);   /* (nx2/oot_patches.py: first person) */\n"
+VIEW_DECL = "extern void hos_oot_free_view(Ctx *c, uint64_t view);\n"
+VIEW_FP_DECL = "extern void hos_first_person(Ctx *c, uint64_t view);\n"
 LIFE_CAS = ("{ uint64_t _a = c->x[13]; uint32_t _e = (uint32_t)c->x[11]; "
             "__atomic_compare_exchange_n((uint32_t *)A64_PTR(_a), &_e, (uint32_t)c->x[12], "
             "0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST); A64_MARK(_a, 4); c->x[11] = (uint64_t)_e; }")
@@ -117,6 +123,10 @@ def patch_flight_rotation(source):
 
 
 def patch_view(source):
+    """The free camera's and first person's hooks at the head of the view's loop in f_804e48c0, first person's after the
+    free camera's; None when the function or its loop's head is not in the file. Each hook, and each declaration, only
+    when absent: a lift the shipped free-camera patch already touched takes first person's beside it, and a second run
+    over either takes nothing."""
     start = source.find(VIEW_HEAD)
     if start < 0:
         return None
@@ -129,9 +139,16 @@ def patch_view(source):
             break
     else:
         return None
-    body = body.replace(anchor, anchor + "    hos_oot_free_view(c, c->x[20]);\n")
-    return (source[:start] + body + source[end:]).replace(
-        '#include "a64.h"\n', '#include "a64.h"\nextern void hos_oot_free_view(Ctx *c, uint64_t view);\n', 1)
+    if VIEW_HOOK + VIEW_FP_HOOK not in body:
+        if VIEW_HOOK not in body:   # (a lift neither patch has touched)
+            body = body.replace(anchor, anchor + VIEW_HOOK + VIEW_FP_HOOK, 1)
+        else:   # (the shipped patch ran before: its hook is in, first person's is not)
+            body = body.replace(VIEW_HOOK, VIEW_HOOK + VIEW_FP_HOOK, 1)
+    source = source[:start] + body + source[end:]
+    add = "".join(decl for decl in (VIEW_DECL, VIEW_FP_DECL) if decl not in source)
+    if add:
+        source = source.replace('#include "a64.h"\n', '#include "a64.h"\n' + add, 1)
+    return source
 
 # Movement speed (the Debug tab's row, host/hos_main.c hos_oot_cct_speed): a character controller's forward speed (s0), on its way
 # to *(controller+40)+472, which the physics step moves the body by with its collisions. The host scales it for Link's controller
@@ -743,6 +760,8 @@ def patch_file(s, name, protect_hearts=False):
     if view is not None:
         out = view
         counts["free camera"] += 1
+        if VIEW_FP_HOOK in out:
+            counts["first person"] += 1
         lines.append("oot_patches: free camera in " + name)
     scene = patch_scene_format(out) if protect_hearts else None
     if scene is not None and SCENE_FORMAT_NEW in scene:
@@ -800,6 +819,7 @@ def report(paths, counts, protect_hearts=False):
         done["mouse camera"] = 0
         done["disable camera centering"] = 0
         done["scene format"] = 0
+        done["first person"] = 0
     total = collections.Counter()
     for c in counts:
         total.update(c)
