@@ -73,7 +73,9 @@ class BcRawTargetTests(unittest.TestCase):
         self.assertLess(end.index("copy_block_attachment("), end.index("probe_image("))
 
     def test_the_noise_pass_is_left_out_only_while_its_targets_have_no_view(self):
-        line = re.search(r'const char\* list = .*RX_VK_SKIP_PROG.*;', self.draw).group(0)
+        # (the parse's argument is what the env list feeds: the baked key must not be in it, the default_list
+        # conditional below carries it instead — gpu/vk/skip_prefix.h took the parse out of vk_draw.cpp's own code)
+        line = re.search(r"skip_prefix::parse\([^;]*RX_VK_SKIP_PROG[^;]*\)", self.draw).group(0)
         self.assertNotIn("53509044401d78d2", line)
         self.assertRegex(self.draw, r"default_list && cp->key == 0x53509044401d78d2ull && !at\.n")
 

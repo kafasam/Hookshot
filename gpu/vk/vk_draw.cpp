@@ -50,6 +50,7 @@
 #include "vk_texture.h"
 #include "movie_upscale_policy.h"
 #include "skip_code.h"
+#include "skip_prefix.h"   // (RX_VK_SKIP_PROG's and the first person head hide's key prefixes)
 #include "driver_faults.h"
 #include "fallback_size_policy.h"
 
@@ -6440,30 +6441,16 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
                      (unsigned long long)cp->key);
             return;
         }
-        // (the list parsed once into key prefixes: it was a snprintf and a string compare on every draw)
-        static const std::vector<std::pair<uint64_t, uint64_t>> skip_keys = [] {   // (value, mask) of each prefix
-            std::vector<std::pair<uint64_t, uint64_t>> v;
-            const char* list = getenv("RX_VK_SKIP_PROG") && strcmp(getenv("RX_VK_SKIP_PROG"), "-") ? getenv("RX_VK_SKIP_PROG") : "";
-            for (const char* q = list; *q;) {
-                const char* e = q;
-                while (*e && *e != ',') e++;
-                const size_t n = std::min<size_t>((size_t)(e - q), 16);
-                if (n) {
-                    const uint64_t value = strtoull(std::string(q, n).c_str(), nullptr, 16) << (4 * (16 - n));
-                    const uint64_t mask = n == 16 ? ~0ull : ~(~0ull >> (4 * n));
-                    v.push_back({value, mask});
-                }
-                q = *e ? e + 1 : e;
-            }
-            return v;
-        }();
-        for (const auto& [value, mask] : skip_keys)
-            if ((cp->key & mask) == value) {
-                static std::atomic<int> told{0};
-                if (told++ < 8) logf("vk: draws of program %016llx left out (RX_VK_SKIP_PROG); its code:%s", (unsigned long long)cp->key,
-                                     program_code_keys(s).c_str());
-                return;
-            }
+        // (the list parsed once into key prefixes: it was a snprintf and a string compare on every draw; the parse is
+        // gpu/vk/skip_prefix.h's own now, shared with the first person head hide's HOS_FP_HEAD_HIDE_KEYS below)
+        static const std::vector<skip_prefix::Entry> skip_keys = skip_prefix::parse(
+            getenv("RX_VK_SKIP_PROG") && strcmp(getenv("RX_VK_SKIP_PROG"), "-") ? getenv("RX_VK_SKIP_PROG") : nullptr);
+        if (skip_prefix::matches(cp->key, skip_keys)) {
+            static std::atomic<int> told{0};
+            if (told++ < 8) logf("vk: draws of program %016llx left out (RX_VK_SKIP_PROG); its code:%s", (unsigned long long)cp->key,
+                                 program_code_keys(s).c_str());
+            return;
+        }
     }
     {   // (hookshot, RX_VK_SKIP_CODE=<code key prefix,...>: the draws of every program with a stage of that native code left out,
         // decided once a program. RX_VK_SKIP_PROG names whole programs; a shared stage is in many. On the Steam Deck (RADV VANGOGH)
