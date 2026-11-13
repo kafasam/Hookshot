@@ -7345,7 +7345,13 @@ static bool typed_upscale(VkCommandBuffer cmd, VkImageView input_view, VkImageVi
     // RX_VK_TAAU_FXAA (PR #1115) belongs to the bilinear stand-in only: the FSR path replaces it, its EASU kernel
     // doing the edge work FXAA was added for, and the flag is read by nothing here; set RX_VK_TAAU_MODE=bilinear
     // with it for the FXAA picture)
-    static const bool bilinear = getenv("RX_VK_TAAU_MODE") && !strcmp(getenv("RX_VK_TAAU_MODE"), "bilinear");
+    /* (the mode: EASU where it has been timed — this build's RX 6700 XT, its 1080p frame 14.9-16.7 ms against the
+       FXAA stand-in's 13.7 — or by the env's explicit ask; the bilinear stand-in elsewhere until a Deck or an iGPU
+       has its own number, RX_VK_TAAU_MODE=fsr everywhere, =bilinear nowhere) */
+    static const bool fsr_timed = getenv("RX_VK_TAAU_MODE")
+                                     ? strcmp(getenv("RX_VK_TAAU_MODE"), "bilinear") != 0
+                                     : dev.props.vendorID == 0x1002 && dev.props.deviceID == 0x73DF;
+    static const bool bilinear_env = !fsr_timed;
     static const float sharpness = [] {
         const char* e = getenv("RX_VK_TAAU_SHARPNESS");
         return e ? std::clamp((float)atof(e), 0.0f, 2.0f) : 0.2f;
@@ -7392,7 +7398,11 @@ static bool typed_upscale(VkCommandBuffer cmd, VkImageView input_view, VkImageVi
         logf("vk: typed upscale helper %s: %s%s", keys, bilinear ? "bilinear" : "FSR 1 EASU + RCAS",
              ok ? "" : ": its pipeline was not made");
     }
-    if (bilinear ? !pipe_linear : (!pipe_easu || !pipe_rcas)) return false;
+    if (!pipe_linear) return false;   /* (nothing to draw with at all) */
+    const bool bilinear = bilinear_env || !pipe_easu || !pipe_rcas;   /* (the old stand-in by the env's ask, or by
+                                                                         the FSR pipelines' failure to build: the
+                                                                         network is not the fallback for a missing
+                                                                         upscaler) */
     uint32_t size[3] = {std::max(1u, out->width >> level), std::max(1u, out->height >> level), 0};
     // (the stand-in's last output, which bounds this one's pixels: shaders/taau_rcas.comp. Made again at a new size,
     // the first frame unbounded; RX_VK_TAAU_NO_CLAMP=1: never bounded)

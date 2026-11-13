@@ -842,7 +842,7 @@ memory sync: in Hyrule Field on a 10 GB RTX 3080, about 66 MB and 4.4 ms a submi
 `RX_VK_WB_MAX_KB=1024` still copies the small results the CPU does read (the exposure meter and the like) and took the
 same scene to 59-60 fps. `0` or unset copies every written binding, as before.
 
-`RX_VK_TAAU_MODE=bilinear` swaps the gameplay upscaler's FSR 1 (EASU + RCAS, the default) for the old bilinear
+`RX_VK_TAAU_MODE=fsr` (the default where it has been timed: this build's RX 6700 XT) puts FSR 1 in; `RX_VK_TAAU_MODE=bilinear` (the default elsewhere, until a Deck or an iGPU has its own number) swaps the gameplay upscaler's FSR 1 (EASU + RCAS, the default) for the old bilinear
 stand-in, and is also the only mode in which `RX_VK_TAAU_FXAA` does anything: the FSR path replaces FXAA (EASU's
 edge-adaptive kernel already does the edge work FXAA was added for), so the two never run together.
 `RX_VK_TAAU_SHARPNESS=<stops>` (0 the sharpest, 2 soft; default 0.2) tunes RCAS.
